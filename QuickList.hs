@@ -19,7 +19,7 @@ should also include a buggy implementation of the tested function that
 _does not_ satisfy the property you wrote.  We'll be asking you to
 write your properties in a very particular way.  For instance, suppose
 you are testing the
-[`const`](http://hackage.haskell.org/package/base-4.14.1.0/docs/Prelude.html#v:const)
+[`const`](http://hackage.haskell.org/package/base-4.17.1.0/docs/Prelude.html#v:const)
 function, which takes two arguments and returns the first one.  Here's
 how you'd normally test (a type-restricted version of) it.  First, we
 write an appropriate property:
@@ -31,7 +31,7 @@ prop_const' a b = const a b == a
 {-
 Then we see what QuickCheck thinks of the property by entering this in GHCi:
 
-       *QuickList> quickCheck (prop_const' :: Char -> Char -> Bool)
+       ghci> quickCheck (prop_const' :: Char -> Char -> Bool)
 
 (The type annotation is needed because `prop_const` is polymorphic;
 QuickCheck wouldn't know what type of test data to generate if we left
@@ -89,9 +89,9 @@ constBug _ b = b -- Oops: this returns the *second* argument, not the first.
 Then you'll be able to test your property on both `const` (where it will pass)
 and `constBug` (where it will not):
 
-    *QuickList> quickCheck (prop_const const :: Char -> Char -> Bool)
+    ghci> quickCheck (prop_const const :: Char -> Char -> Bool)
     +++ OK, passed 100 tests.
-    *QuickList> quickCheck (prop_const constBug :: Char -> Char -> Bool)
+    ghci> quickCheck (prop_const constBug :: Char -> Char -> Bool)
     *** Failed! Falsifiable (after 1 test and 2 shrinks):
     'a'
     'b'
@@ -102,9 +102,9 @@ Random Generation and Shrinking
 Note above that when QuickCheck detects a property violation, it produces a counterexample.
 In this case, the counterExample is the two arguments 'a' and 'b',
 
-    *QuickList> prop_const constBug 'a' 'b'
+    ghci> prop_const constBug 'a' 'b'
     False
-    *QuickList> constBug 'a' 'b'
+    ghci> constBug 'a' 'b'
     'b'
 
 Although QuickCheck is based on testing with random arguments, it is not a coincidence
@@ -127,7 +127,7 @@ counterexample has been found.
 Let's see how this works with built-in types. The sample function can be used with
 `arbitrary` to produce and print out 10 random elements of a type.
 
-      *QuickList> sample (arbitrary :: Gen Char)
+      ghci> sample (arbitrary :: Gen Char)
       'c'
       'x'
       'V'
@@ -148,9 +148,9 @@ different from eachother, then they will be a counterexample. However, QuickChec
 it then runs the shrink operation on these two chars to get a list of potential alternates to try
 instead.
 
-      *QuickList> shrink 'c'
+      ghci> shrink 'c'
       "ab"
-      *QuickList> shrink 'x'
+      ghci> shrink 'x'
       "abc"
 
 For `Char` these alternates are all at the beginning of the alphabet so it is likely that we'll see
@@ -169,7 +169,7 @@ to try.)  We recommend that you always implement `shrink` as it is a useful way 
 -- Part a
 
 Define a property showing that
-[`minimum`](http://hackage.haskell.org/package/base-4.14.1.0/docs/Prelude.html#v:minimum)
+[`minimum`](http://hackage.haskell.org/package/base-4.17.1.0/docs/Prelude.html#v:minimum)
 really returns the smallest element in a list; also, write a buggy
 implementation of `minimum` that doesn't satisfy your property.
 (Don't forget to fill in the type signature for `prop_minimum`!)
@@ -186,15 +186,16 @@ minimumBug :: Ord a => [a] -> a
 minimumBug = undefined
 
 {-
-Be careful when testing your code with ghci.
+Be careful when testing your code with ghci. Make sure that you provide
+a type annotation for any polymorphic functions that you are testing.
 
-     *QuickList> quickCheck (prop_minimum (minimumBug :: [Char] -> Char))
+     ghci> quickCheck (prop_minimum (minimumBug :: [Char] -> Char))
 
-In particular, if you leave off the type annotation, you could get some
+If you leave off the type annotation, you could get some
 strange results. For example, it is possible for this check to succeed
 even though the property is correct and the buggy version is indeed buggy.
 
-      *QuickList> quickCheck (prop_minimum minimumBug)
+      ghci> quickCheck (prop_minimum minimumBug)
 
 The issue is that if `prop_minimum minimumBug` has a polymorphic type, then
 ghci will default any remaining type variables to `()` (i.e. the unit
@@ -204,8 +205,8 @@ minimum element.
 If you enable the warning about defaulting in ghci, it will alert you when this
 happens
 
-      *QuickList>  :set -Wtype-defaults
-      *QuickList> quickCheck (prop_minimum minimumBug)
+      ghci>  :set -Wtype-defaults
+      ghci> quickCheck (prop_minimum minimumBug)
       <interactive>:90:1-37: warning: [-Wtype-defaults]
         • Defaulting the following constraints to type ‘()’
            (Arbitrary a0)
@@ -220,7 +221,7 @@ happens
 -- Part b
 
 Define a property specifying the
-[`replicate`](http://hackage.haskell.org/package/base-4.14.1.0/docs/Prelude.html#v:replicate)
+[`replicate`](http://hackage.haskell.org/package/base-4.17.1.0/docs/Prelude.html#v:replicate)
 function from the standard library, and a buggy implementation that
 violates this spec.  Recall that `replicate k x` is a list containing
 `k` copies of `x`.
@@ -230,7 +231,7 @@ One QuickCheck feature that will be important here
 [`NonNegative`](http://hackage.haskell.org/package/QuickCheck-2.14.2/docs/Test-QuickCheck-Modifiers.html#t:NonNegative),
 to restrict the domain of arbitrarily generated values:
 
-    *QuickList> sample (arbitrary :: Gen Int)
+    ghci> sample (arbitrary :: Gen Int)
     1
     -2
     4
@@ -242,7 +243,7 @@ to restrict the domain of arbitrarily generated values:
     60
     -1780
     3770
-    *QuickList> sample (arbitrary :: Gen NonNegative Int)
+    ghci> sample (arbitrary :: Gen NonNegative Int)
     NonNegative {getNonNegative = 1}
     NonNegative {getNonNegative = 0}
     NonNegative {getNonNegative = 1}
@@ -271,12 +272,12 @@ When you make a quickcheck instance, you should define both `arbitrary` and
 `shrink` for the `SmallNonNegInt` type. Note: the shrink function in this instance can
 be derived from shrinking the int inside.  Try it out first:
 
-     *QuickList> shrink (10 :: Int)
+     ghci> shrink (10 :: Int)
      [0,5,8,9]
 
 Then implement your definition so that you get the following behavior:
 
-     *QuickList> shrink (SmallNonNegInt 10)
+     ghci> shrink (SmallNonNegInt 10)
      [SmallNonNegInt 0,SmallNonNegInt 5,SmallNonNegInt 8,SmallNonNegInt 9]
 -}
 
@@ -298,7 +299,7 @@ replicateBug = undefined
 -- Part c
 
 Define two properties specifying
-[`group`](http://hackage.haskell.org/package/base-4.14.1.0/docs/Data-List.html#v:group);
+[`group`](http://hackage.haskell.org/package/base-4.17.1.0/docs/Data-List.html#v:group);
 the first one should say that "the concatenation of the result is
 equal to the argument", and the second should say that "each sublist
 in the result is non-empty and contains only equal elements".  Also
@@ -318,7 +319,7 @@ groupBug = undefined
 -- Part d
 
 Write two interesting properties about
-[`reverse`](http://hackage.haskell.org/package/base-4.14.1.0/docs/Prelude.html#v:reverse).
+[`reverse`](http://hackage.haskell.org/package/base-4.17.1.0/docs/Prelude.html#v:reverse).
 Write two different buggy versions, one which violates each property.
 -}
 

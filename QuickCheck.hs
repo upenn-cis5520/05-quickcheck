@@ -1,7 +1,7 @@
 {-
 ---
 fulltitle: "Type-directed Property Testing"
-date: October 3, 2022
+date:
 ---
 -}
 
@@ -43,6 +43,7 @@ that we use from this module will be marked by `QC.`
 -}
 
 import Control.Monad (liftM2, liftM3)
+import qualified Data.DList as DL
 import qualified Data.Foldable as Foldable
 import qualified Data.List as List
 import Test.QuickCheck
@@ -55,6 +56,10 @@ import Test.QuickCheck
 import qualified Test.QuickCheck as QC
 
 {-
+While you will be able to run some of the examples in this module
+directly in the IDE, you will need to have a terminal with this
+module loaded into ghci in order to work with QuickCheck.
+
 Properties
 ==========
 
@@ -175,24 +180,29 @@ ghci> quickCheckN 1000 prop_revapp_ok
 QuickCheck QuickSort
 --------------------
 
-Let's look at a slightly more interesting example. Here is the canonical
-implementation of *quicksort* in Haskell. (Some may quibble that this is
+Let's look at a slightly more interesting example. Here is an
+implementation of *quicksort* in Haskell. For efficiency, we'll use
+the `DList` library so that we can `append` quickly. (Some may quibble that this is
 actually the quicksort algorithm because it does not modify the list in
 place. But it is a reasonable purely functional analogue.)
 -}
 
-qsort :: Ord a => [a] -> [a]
-qsort [] = []
-qsort (x : xs) = qsort lhs ++ [x] ++ qsort rhs
+qsort :: forall a. Ord a => [a] -> [a]
+qsort t = DL.toList (aux t)
   where
-    lhs = [y | y <- xs, y < x] -- this is a "list comprehension"
-    -- i.e. the list of all elements from
-    --      xs that are less than x
-    rhs = [z | z <- xs, z > x]
+    aux :: [a] -> DL.DList a
+    aux [] = DL.empty
+    aux (x : xs) = aux lhs `DL.append` DL.cons x (aux rhs)
+      where
+        lhs = [y | y <- xs, y < x] -- this is a "list comprehension"
+        -- i.e. the list of all elements from
+        --      xs that are less than x
+        rhs = [z | z <- xs, z > x]
 
 {-
 Really doesn't need much explanation! Let's run it "by hand" on a
-few inputs to see what it does.
+few inputs to see what it does. Check out each of these to see what
+they produce.
 -}
 
 -- >>> [10,9..1]
@@ -349,7 +359,9 @@ Say, what?!
 ghci> qsort [-1,-1]
 ~~~~~
 
-Ugh! So close, and yet ... Can you spot the bug in our code?
+Ugh! So close, and yet ... Can you spot the bug in our code? Here's
+a simplified version that uses normal lists instead of DList.
+(The bug is not in the DList library.)
 
 ~~~~~{.haskell}
 qsort []     = []
@@ -425,24 +437,26 @@ To see why, let's look at another sorting function.
 
 The following code is (a simplified version of) the `insert` function from the
 standard library
-
 -}
 
-insert :: Ord a => a -> [a] -> [a]
-insert x [] = [x]
-insert x (y : ys)
-  | x <= y = x : y : ys
-  | otherwise = y : insert x ys
+insert :: forall a. Ord a => a -> [a] -> [a]
+insert x = aux
+  where
+    aux :: [a] -> [a]
+    aux [] = [x]
+    aux (y : ys)
+      | x <= y = x : y : ys
+      | otherwise = y : aux ys
 
 {-
 Given an element `x` and a list `xs`, the function walks along `xs`
 till it finds the first element greater than `x` and it places `x`
 to the left of that element. Thus
+-}
 
-~~~~~{.haskell}
-ghci> insert 8 ([1..3] ++ [10..13])
-~~~~~
+-- >>> insert 8 ([1..3] ++ [10..13])
 
+{-
 Indeed, the following is the well known [insertion-sort][5] algorithm
 -}
 
@@ -474,8 +488,6 @@ is bogus,
 
 ~~~~~{.haskell}
 ghci> quickCheckN 1000 prop_insert_ordered'
-
-ghci> insert 0 [0, -1]
 ~~~~~
 
 the output *is* ordered if the input was ordered to begin with
@@ -491,7 +503,6 @@ requires that the input list be ordered. If we QC the property
 
 ~~~~~{.haskell}
 ghci> quickCheck prop_insert_ordered
-
 ~~~~~
 
 <FILL IN WHAT HAPPENS HERE!>
@@ -525,8 +536,8 @@ vacuity by allowing us to investigate the *distribution*
 of test cases
 
 ~~~~~{.haskell}
-label    :: String -> Property -> Property
-classify :: Bool -> String -> Property -> Property
+QC.label    :: String -> Property -> Property
+QC.classify :: Bool -> String -> Property -> Property
 ~~~~~
 
 We may use these to write a property that looks like
@@ -579,7 +590,7 @@ of "generators for values of type a".
 
 The impurity of random generation is bottled up inside the 'Gen' type. The
 **monad** structure of this type let's us work with this impurity in a
-controlled way, but we will get to that. For now, note that these generators
+controlled way, but we will get to what that means. For now, note that these generators
 are a powerful mechanism for creating random data and that the QuickCheck
 library contains multiple ways of constructing generators.
 
@@ -621,7 +632,6 @@ sample' function will return them to you.
 -}
 
 -- >>> QC.sample' genSmallInt
--- [10,5,10,4,8,6,10,3,9,9,9]
 
 {-
 Generator Combinators
@@ -644,7 +654,6 @@ between `0` and `3`.
 -}
 
 -- >>> QC.sample' $ QC.choose (0, 3)
--- [0,3,0,2,1,0,1,2,0,0,2]
 
 {-
 A second useful combinator is `elements`
@@ -657,7 +666,6 @@ which returns a generator that produces values drawn from the input list
 -}
 
 -- >>> QC.sample' $ QC.elements [10, 20..100]
--- [70,40,60,100,70,70,80,80,90,60,100]
 
 {-
 A third combinator is `oneof`
@@ -670,7 +678,6 @@ which allows us to randomly choose between multiple generators
 -}
 
 -- >>> QC.sample' $ QC.oneof [QC.elements [10,20,30], QC.choose (0,3)]
--- [30,10,30,2,10,0,10,2,1,30,1]
 
 {-
 a related generator is `listOf`
@@ -683,7 +690,6 @@ that gives us random lists, where the elements are generated by the argument gen
 -}
 
 -- >>> QC.sample' (QC.listOf (QC.elements [1,2,3]))
--- [[],[3],[2,2,3],[2],[3,2,2,2,1],[2,1,3,2,1,2,1],[3],[1,3,2,1],[2,3,1,1,3],[3,1,1,3,2,1,2,2,1,1,1,3,1,1,3,2,1,1],[3,1,1,1,2,3,1,1,3,2,1,2,2]]
 
 {-
 and finally, the above is generalized into the `frequency` combinator
@@ -696,28 +702,68 @@ which allows us to build weighted combinations of individual generators.
 -}
 
 -- >>> QC.sample' $ QC.frequency [(1, QC.elements [1,2]), (5, QC.elements [100,200])]
--- [100,200,100,100,2,100,200,100,100,100,100]
 
 {-
-The Generator Monad
--------------------
+The Generator *Monad*
+---------------------
 
-The parameterized type 'Gen' is an instance of the monad type class. What this
-means (for today) is that the monadic operations are available
+The parameterized type 'Gen' is an instance of the `Monad` type class, one that we
+will become more familiar with later one this semester. What this
+means, for today, is that the monadic operations are available
 for constructing new generators. Two of these operators come directly from
 the Monad class itself:
 
 ~~~~~~~{.haskell}
--- from the class Monad
+-- part of the class Monad
 --
 return :: a -> Gen a
-(>>=)  :: Gen a -> (a -> Gen b) -> Gen b
+(>>=)  :: Gen a -> (a -> Gen b) -> Gen b     -- pronounced "bind"
 ~~~~~~~
 
-The next three are from the library [Control.Monad](http://hackage.haskell.org/package/base-4.13.0.0/docs/Control-Monad.html).
-These are defined in terms of return and (>>=) above, so they
+For the `Gen` type, the `return` operator creates a generator that
+returns exactly the same thing every time, the argument that we
+supplied to return.
+
+For example, we can create a generator that always returns the value 3.
+-}
+
+genThree :: Gen Int
+genThree = return 3
+
+-- >>> QC.sample' genThree
+
+{-
+The `(>>=)` operator is a bit more interesting. It takes a generator and a
+function that takes a value and returns a generator. It then returns a
+generator that applies the function to the value generated by the first
+generator. That's a mouthful, so let's look at some examples.
+
+Here's a crazy way to always generate the value five: first generate a three and then
+add two to it.
+-}
+
+genFive :: Gen Int
+genFive = genThree >>= \x -> return (x + 2)
+
+-- >>> QC.sample' genFive
+
+{-
+Here's a slightly more interesting generator: we first create an arbitrary
+boolean value, then if that value is `True` we generate a three, otherwise we
+generate a five.
+-}
+
+genThreeOrFive :: Gen Int
+genThreeOrFive = QC.choose (False, True) >>= \x -> return (if x then 3 else 5)
+
+-- >>> QC.sample' genThreeOrFive
+
+{-
+The next three useful operations are from the library
+[Control.Monad](http://hackage.haskell.org/package/base-4.17.1.0/docs/Control-Monad.html).
+These are defined in terms of `return` and `(>>=)` above, so they
 are available for any type constructor that is an instance of
-the Monad class, including Gen.
+the Monad class, including `Gen`.
 
 ~~~~~~~{.haskell}
 liftM  :: (a -> b) -> Gen a -> Gen b
@@ -734,33 +780,39 @@ Note, `liftM` above has another name---`fmap`.  That's right, every monad is
 also a functor. Furthermore, the infix operator `(<$>)` is yet another name
 for `fmap` that can look nice in your definitions.
 
-We will cover what it exactly means for `Gen` to be a monad in a future
-lecture. However, as we will see, these operations let us put generators
+We will cover what it exactly means for `Gen` to be a monad later on in the
+course. However, as we will see, these operations let us put generators
 together compositionally.
--}
 
-genThree :: Gen Int -- a generator that always generates the value '3'
-genThree = return 3
+-}
 
 genPair :: Gen a -> Gen b -> Gen (a, b)
 genPair = liftM2 (,) -- a generator for pairs
+
+-- >>> QC.sample' (genPair genThree genFive)
 
 {-
 Generator Practice
 ------------------
 
 Use the operators above to define generators. Make sure that you test them out
-with `sample` to make sure that they are what you want.
+ to make sure that they are what you want.
 -}
 
 genBool :: Gen Bool
 genBool = undefined
 
+-- >>> QC.sample' genBool
+
 genTriple :: Gen a -> Gen b -> Gen c -> Gen (a, b, c)
 genTriple = undefined
 
+-- >>> QC.sample' (genTriple genBool genThree genFive)
+
 genMaybe :: Gen a -> Gen (Maybe a)
 genMaybe ga = undefined
+
+-- >>> QC.sample' (genMaybe genThree)
 
 {-
 The Arbitrary Typeclass
@@ -815,9 +867,13 @@ We can use the above combinators to write generators for lists
 genList1 :: (Arbitrary a) => Gen [a]
 genList1 = liftM2 (:) arbitrary genList1
 
--- >>> QC.sample' (genList1 :: Gen [Int])
-
 {-
+Only run this if you have a lot of time to kill!
+
+~~~~~~~~~~~{.haskell}
+       ghci> QC.sample' (genList1 :: Gen [Int])
+~~~~~~~~~~~
+
 Can you spot a problem in the above?
 
 <FILL IN HERE>
@@ -924,8 +980,10 @@ function to make it super fast.
 -}
 
 treeSum :: Tree Int -> Int
-treeSum Empty = 0
-treeSum (Branch x l r) = if x == 0 then 0 else treeSum l + x + treeSum r
+treeSum = aux
+  where
+    aux Empty = 0
+    aux (Branch x l r) = if x == 0 then 0 else aux l + x + aux r
 
 {-
 Can you see the bug? The special case of 0 would be great if we were
@@ -953,7 +1011,7 @@ Branch (-6) (Branch 2 (Branch (-3) Empty (Branch 12 Empty Empty)) (Branch 11 Emp
 
 But, this counterexample doesn't really help me find the bug in my code.
 
-However, I can ask quick check to produce not just a counterexample, but a small
+However, I can ask QuickCheck to produce not just a counterexample, but a small
 counterexample, by explaining how to *shrink* data structures. The general idea is that
 if quickcheck finds a random tree that fails the property, it can apply the shrinking function
 to produce "smaller variants" of that tree, and then check those too. By repeated shrinking,
@@ -965,12 +1023,14 @@ Here is how to shrink the Tree type shown above.
 
 -- | Produce some smaller trees
 shrinkTree :: Arbitrary a => Tree a -> [Tree a]
-shrinkTree (Branch x l r) =
-  [l, r] -- left and right subtrees are smaller
-    ++ map (\l' -> Branch x l' r) (shrinkTree l) -- shrink left subtree
-    ++ map (\r' -> Branch x l r') (shrinkTree r) -- shrink right subtree
-    ++ map (\x' -> Branch x' l r) (shrink x) -- shrink the value
-shrinkTree Empty = []
+shrinkTree = aux
+  where
+    aux Empty = [] -- empty trees cannot be shrunk
+    aux (Branch x l r) =
+      [l, r] -- left and right subtrees are smaller
+        ++ map (\l' -> Branch x l' r) (shrinkTree l) -- shrink left subtree
+        ++ map (\r' -> Branch x l r') (shrinkTree r) -- shrink right subtree
+        ++ map (\x' -> Branch x' l r) (shrink x) -- shrink the value
 
 {-
 If the tree is a "Branch" then there are *many* potentially smaller trees to explore. These
@@ -979,10 +1039,8 @@ tree then there might be a bug in some of the smaller trees too.
 -}
 
 -- >>> shrinkTree (Branch 0 (Branch 1 Empty Empty) (Branch 1 Empty Empty))
--- [Branch 1 Empty Empty,Branch 1 Empty Empty,Branch 0 Empty (Branch 1 Empty Empty),Branch 0 Empty (Branch 1 Empty Empty),Branch 0 (Branch 0 Empty Empty) (Branch 1 Empty Empty),Branch 0 (Branch 1 Empty Empty) Empty,Branch 0 (Branch 1 Empty Empty) Empty,Branch 0 (Branch 1 Empty Empty) (Branch 0 Empty Empty)]
 
 -- >>> map prop_treeSum (shrinkTree (Branch 0 (Branch 1 Empty Empty) (Branch 1 Empty Empty)))
--- [True,True,False,False,False,False,False,False]
 
 {-
 Now, let's test our property with shrinking. We can use the `forAllShrink` function to
@@ -1005,7 +1063,9 @@ the generator and shrinking function we have just defined:
 -}
 
 instance Arbitrary a => Arbitrary (Tree a) where
+  arbitrary :: Arbitrary a => Gen (Tree a)
   arbitrary = genTree
+  shrink :: Arbitrary a => Tree a -> [Tree a]
   shrink = shrinkTree
 
 {-
@@ -1031,7 +1091,6 @@ genOrdList :: (Arbitrary a, Ord a) => Gen [a]
 genOrdList = fmap List.sort arbitrary
 
 -- >>> QC.sample' (genOrdList :: Gen [Int])
--- [[],[-1,2],[-4,1,4],[2],[-2,4,6,6],[],[-7,-4,-4,1,1,3,8,10],[-14,-1,7],[-16,-15,-10,-6,-5,-1,1,6,7,7,8,10,12,14,16],[-12,-11,-7,-6,7,14,14,17],[-17,-12,-10,-7,-1,4,6,20]]
 
 {-
 This is also a place I like to use the `<$>` operator. This notation captures
@@ -1084,6 +1143,7 @@ around that, we can define a new type that *wraps* lists, but has a different
 newtype OrdList a = OrdList [a] deriving (Eq, Ord, Show, Read)
 
 instance (Ord a, Arbitrary a) => Arbitrary (OrdList a) where
+  arbitrary :: (Ord a, Arbitrary a) => Gen (OrdList a)
   arbitrary = fmap OrdList genOrdList
 
 {-
@@ -1120,7 +1180,7 @@ Credit: This lecture based on [12].
 [0]: http://www.cse.chalmers.se/~koen/
 [1]: http://www.cse.chalmers.se/~rjmh/QuickCheck/
 [2]: http://www.cs.york.ac.uk/fp/smallcheck/
-[3]: http://video.google.com/videoplay?docid=4655369445141008672#
+[3]: https://www.youtube.com/watch?v=XgasxJWgZBM
 [4]: http://www.erlang-factory.com/upload/presentations/55/TestingErlangProgrammesforMulticore.pdf
 [5]: http://en.wikipedia.org/wiki/Insertion_sort
 [6]: http://hackage.haskell.org/packages/archive/QuickCheck/latest/doc/html/src/Test-QuickCheck-Gen.html#Gen
