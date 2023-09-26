@@ -1,7 +1,7 @@
 {-
 ---
 fulltitle: "Type-directed Property Testing"
-date:
+date: October 2, 2023
 ---
 -}
 
@@ -858,20 +858,29 @@ However, you'll need to make your own instances of `Arbitrary` for user
  from the library.) After reading this section, challenge yourself to write
  a generator for a `Tree` type.
 
-Generating Lists
+Generating Trees
 ----------------
 
-We can use the above combinators to write generators for lists
+Here's our familiar type for binary trees. Let's generate some
+arbitrary values of this type!
 -}
 
-genList1 :: (Arbitrary a) => Gen [a]
-genList1 = liftM2 (:) arbitrary genList1
+data Tree a = Empty | Branch a (Tree a) (Tree a) deriving (Show, Foldable)
+
+{-
+Here's our first generator. It uses the `liftM3` combinator above
+to generate an arbitrary tree. It type checks, but that is the
+only good thing about this code.
+-}
+
+genTree1 :: (Arbitrary a) => Gen (Tree a)
+genTree1 = liftM3 Branch arbitrary genTree1 genTree1
 
 {-
 Only run this if you have a lot of time to kill!
 
 ~~~~~~~~~~~{.haskell}
-       ghci> QC.sample' (genList1 :: Gen [Int])
+       ghci> QC.sample' (genTree1 :: Gen (Tree Int))
 ~~~~~~~~~~~
 
 Can you spot a problem in the above?
@@ -881,14 +890,22 @@ Can you spot a problem in the above?
 Let's try again,
 -}
 
-genList2 :: (Arbitrary a) => Gen [a]
-genList2 =
+genTree2 :: forall a. (Arbitrary a) => Gen (Tree a)
+genTree2 =
   QC.oneof
-    [ return [],
-      liftM2 (:) arbitrary genList2
+    [ return Empty,
+      liftM3 Branch arbitrary genTree2 genTree2
     ]
 
--- >>> QC.sample' (genList2 :: Gen [Int])
+{-
+Let's take a look at how big the trees are that we are generating. Because
+we derived the `Foldable` class for our `Tree` type above, the `length`
+function will tell us how many values are stored in the generated trees.
+Refresh this value a few times to see the distribution of tree sizes that
+our generator is producing.
+-}
+
+-- >>> map length <$> QC.sample' (genTree2 :: Gen (Tree Int))
 
 {-
 This is not bad, but there is still something undesirable.
@@ -896,25 +913,30 @@ What is wrong with this output?
 
 <FILL IN HERE>
 
-This version fixes the problem. We only choose `[]` one eighth of the time.
+This version fixes that problem. We only choose `Empty` one third of the time.
 -}
 
-genList3 :: (Arbitrary a) => Gen [a]
-genList3 =
+genTree3 :: forall a. (Arbitrary a) => Gen (Tree a)
+genTree3 =
   QC.frequency
-    [ (1, return []),
-      (7, liftM2 (:) arbitrary genList3)
+    [ (1, return Empty),
+      (2, liftM3 Branch arbitrary genTree3 genTree3)
     ]
 
--- >>>  QC.sample' (genList3 :: Gen [Int])
+{-
+But, if you try it out, you'll find that this generator is rather slow.
+In fact, I was never patient enough to let it finish.
+-}
+
+-- >>>  map length <$> QC.sample' (genTree3 :: Gen (Tree Int))
 
 {-
-However, `genList3` has the opposite problem --- it generates a lot of long
-lists (longer than length 2 or 3) but not so many short ones. But finding bugs
-with shorter lists is a lot faster than finding bugs with long lists.
+Now `genTree3` has the opposite problem --- it generates a lot of big
+trees (more than 4 or 5 values) but not so many short ones. But finding bugs
+with small data is a lot faster than finding bugs with large data.
 
 So, two last tweaks. We let quickcheck determine what frequency to use, and we
-decrease the frequency of cons with each recursive call.  For the former, we
+decrease the frequency of `Branch` with each recursive call.  For the former, we
 rely on the following function from QC library.
 
          sized :: (Int -> Gen a) -> Gen a
@@ -930,43 +952,28 @@ we have to bring the type variable `a` into scope with the `forall`
 keyword.)
 -}
 
-genList4 :: forall a. (Arbitrary a) => Gen [a]
-genList4 = QC.sized gen
+genTree :: forall a. (Arbitrary a) => Gen (Tree a)
+genTree = QC.sized gen
   where
-    gen :: Int -> Gen [a]
+    gen :: Int -> Gen (Tree a)
     gen n =
       QC.frequency
-        [ (1, return []),
-          (n, liftM2 (:) arbitrary (gen (n `div` 2)))
+        [ (1, return Empty),
+          (n, liftM3 Branch arbitrary (gen (n `div` 2)) (gen (n `div` 2)))
         ]
 
 {-
-Now look at that distribution! Not too small, not too big, not too many empty lists.
-
+Now look at that distribution! Not too small, not too big, not too many empty trees.
 -}
 
--- >>> QC.sample' (genList4 :: Gen [Int])
+-- >>> map length <$> QC.sample' (genTree :: Gen (Tree Int))
+-- [0,3,1,4,4,8,8,9,19,8,11]
 
 {-
-I encourage you to look at the implementation of `genList4` closely. This use
+I encourage you to look at the implementation of `genTree4` closely. This use
 of `frequency` and `sized` is particularly important to controlling the
-generation of tree-structured data.
+generation of arbitrary tree-structured data.
 
-For practice, see if you can generate arbitrary trees using the pattern shown
-above in `genList4`.
-
--}
-
-data Tree a = Empty | Branch a (Tree a) (Tree a) deriving (Show, Foldable)
-
-genTree :: Arbitrary a => Gen (Tree a)
-genTree = QC.sized gen
-  where
-    gen n = undefined
-
--- >>> QC.sample' (genTree :: Gen (Tree Int))
-
-{-
 Shrinking
 ---------
 
@@ -1087,8 +1094,8 @@ the `sort` function over the standard generator for lists
 (via the overloaded `arbitrary` operation).
 -}
 
-genOrdList :: (Arbitrary a, Ord a) => Gen [a]
-genOrdList = fmap List.sort arbitrary
+genOrdList :: forall a. (Arbitrary a, Ord a) => Gen [a]
+genOrdList = fmap List.sort (arbitrary :: Gen [a])
 
 -- >>> QC.sample' (genOrdList :: Gen [Int])
 
@@ -1098,11 +1105,11 @@ the idea that we are applying the function to every generated value in
 the `Gen` monad.
 -}
 
-genOrdList' :: (Arbitrary a, Ord a) => Gen [a]
-genOrdList' = List.sort <$> genList4
+genOrdList' :: forall a. (Arbitrary a, Ord a) => Gen [a]
+genOrdList' = List.sort <$> arbitrary
 
 {-
-NOTE: Above, just saying `sort genList4` doesn't work. We have that `genList4`
+NOTE: Above, just saying `sort arbitrary` doesn't work. We have that `arbitrary`
 is a generator for lists, not a list itself. Because `Gen` is a functor, the
 right way to compose generation with a transformation is to use `fmap`.
 
